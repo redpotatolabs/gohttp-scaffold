@@ -35,7 +35,7 @@ func TestSecurityHeaders(t *testing.T) {
 		"X-Content-Type-Options":  "nosniff",
 		"X-Frame-Options":         "DENY",
 		"Referrer-Policy":         "strict-origin-when-cross-origin",
-		"Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
+		"Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
 	}
 	for k, v := range wantHeaders {
 		if got := w.Header().Get(k); got != v {
@@ -188,6 +188,52 @@ func TestRateLimiter_HonorsXForwardedFor(t *testing.T) {
 	h.ServeHTTP(w2, req("2.2.2.2"))
 	if w1.Code != 200 || w2.Code != 200 {
 		t.Errorf("both XFFs should pass: %d %d", w1.Code, w2.Code)
+	}
+	// A client can put anything before the proxy's entry, so only the last one counts.
+	w3 := httptest.NewRecorder()
+	h.ServeHTTP(w3, req("9.9.9.9, 1.1.1.1"))
+	if w3.Code != http.StatusTooManyRequests {
+		t.Errorf("a made-up earlier entry got past the limit: %d", w3.Code)
+	}
+}
+
+func TestClientIP(t *testing.T) {
+	for _, c := range []struct {
+		name, remote, cf, xff, want string
+	}{
+		{"cloudflare", "127.0.0.1:5000", "203.0.113.7", "1.2.3.4, 203.0.113.7", "203.0.113.7"},
+		{"proxy", "127.0.0.1:5000", "", "9.9.9.9, 198.51.100.2", "198.51.100.2"},
+		{"direct, port dropped", "192.0.2.5:61234", "", "", "192.0.2.5"},
+		{"ipv6", "[2001:db8::1]:443", "", "", "2001:db8::1"},
+	} {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.RemoteAddr = c.remote
+		if c.cf != "" {
+			r.Header.Set("Cf-Connecting-Ip", c.cf)
+		}
+		if c.xff != "" {
+			r.Header.Set("X-Forwarded-For", c.xff)
+		}
+		if got := clientIP(r); got != c.want {
+			t.Errorf("%s: clientIP = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestRateLimiter_NewConnectionsShareABucket(t *testing.T) {
+	h := RateLimiter(1, 1)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	codes := []int{}
+	for _, port := range []string{"1001", "1002"} {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.RemoteAddr = "192.0.2.5:" + port
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		codes = append(codes, w.Code)
+	}
+	if codes[0] != http.StatusOK || codes[1] != http.StatusTooManyRequests {
+		t.Errorf("codes = %v, want 200 then 429", codes)
 	}
 }
 

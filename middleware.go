@@ -2,13 +2,21 @@ package scaffold
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/epistemi/beacon/pkg/beacon"
 )
+
+// ContentSecurityPolicy only allows the site's own scripts, styles, forms and frames.
+// form-action also covers where a submitted form redirects to, so a form that
+// redirects off-site needs its own policy.
+const ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+	"object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 // SecurityHeaders sets the standard epistemi response headers.
 func SecurityHeaders(next http.Handler) http.Handler {
@@ -16,13 +24,13 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'")
+		w.Header().Set("Content-Security-Policy", ContentSecurityPolicy)
 		next.ServeHTTP(w, r)
 	})
 }
 
-// RateLimiter returns a per-IP token-bucket middleware. Identifies clients
-// by X-Forwarded-For if present, else RemoteAddr. Spawns a cleanup
+// RateLimiter returns a per-IP token-bucket middleware. Clients are identified by
+// clientIP. Spawns a cleanup
 // goroutine that drops entries idle > 5 min; the goroutine runs for the
 // process lifetime (acceptable for long-running servers — revisit if this
 // is embedded in a test that spins servers up and down).
@@ -50,10 +58,7 @@ func RateLimiter(rps int, burst int) func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := r.RemoteAddr
-			if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-				ip = fwd
-			}
+			ip := clientIP(r)
 
 			mu.Lock()
 			v, ok := visitors[ip]
@@ -105,4 +110,26 @@ func (s *Server) RecoverPanics(next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(w, r)
 	})
+}
+
+// clientIP is the address a request came from. Behind Cloudflare that's
+// Cf-Connecting-Ip, which Cloudflare sets itself. Otherwise it's the last
+// X-Forwarded-For entry, added by the nearest proxy: earlier entries come from the
+// client, which could change them to dodge the limit. Without either it's the
+// connection's address, without the port, so new connections from one client share
+// a bucket.
+func clientIP(r *http.Request) string {
+	if ip := strings.TrimSpace(r.Header.Get("Cf-Connecting-Ip")); ip != "" {
+		return ip
+	}
+	if fwd := r.Header.Values("X-Forwarded-For"); len(fwd) > 0 {
+		parts := strings.Split(fwd[len(fwd)-1], ",")
+		if ip := strings.TrimSpace(parts[len(parts)-1]); ip != "" {
+			return ip
+		}
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
 }
