@@ -1,4 +1,4 @@
-// Package scaffold bundles the HTTP scaffolding shared across epistemi Go
+// Package scaffold bundles the HTTP scaffolding shared across redpotatolabs Go
 // services: middleware (security headers, panic recovery, rate limiting),
 // JSON helpers, build/health endpoints, env-or-default, and an opinionated
 // Run loop with graceful shutdown.
@@ -18,10 +18,10 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/epistemi/beacon/pkg/beacon"
+	"github.com/redpotatolabs/beacon/pkg/beacon"
 )
 
-// Server bundles cross-cutting concerns shared by epistemi HTTP services.
+// Server bundles cross-cutting concerns shared by redpotatolabs HTTP services.
 // The zero value is usable; beacon reporting is a no-op until SetBeacon
 // is called.
 type Server struct {

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/epistemi/beacon/pkg/beacon"
+	"github.com/redpotatolabs/beacon/pkg/beacon"
 )
 
 // ContentSecurityPolicy only allows the site's own scripts, styles, forms and frames.
@@ -18,7 +18,7 @@ import (
 const ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
 	"object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
-// SecurityHeaders sets the standard epistemi response headers.
+// SecurityHeaders sets the standard redpotatolabs response headers.
 func SecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")

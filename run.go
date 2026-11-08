@@ -32,7 +32,7 @@ type RunConfig struct {
 	OnShutdown func(context.Context)
 }
 
-// Run starts an http.Server with the standard epistemi timeouts and
+// Run starts an http.Server with the standard redpotatolabs timeouts and
 // blocks until SIGINT/SIGTERM, then drains. Fatal startup errors are
 // reported via the Server's beacon client.
 func (s *Server) Run(ctx context.Context, cfg RunConfig) error {
