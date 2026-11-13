@@ -8,9 +8,6 @@
 // through beacon without package-level globals. Helpers that don't need
 // state (SecurityHeaders, RateLimiter, ReadJSON, WriteJSON,
 // RegisterBuildRoutes, EnvOrDefault) are plain package functions.
-//
-// See gohttp-scaffold-api.md in the planning tree for the design
-// rationale and locked decisions.
 package scaffold
 
 import (
@@ -18,7 +15,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/redpotatolabs/beacon/pkg/beacon"
+	beacon "github.com/redpotatolabs/beacon-client"
 )
 
 // Server bundles cross-cutting concerns shared by redpotatolabs HTTP services.
