@@ -28,6 +28,10 @@ type Identify func(r *http.Request) (actor changelog.Actor, ok bool)
 //	mux.Handle("GET /api/s/{token}", h.Public) // no sign-in
 //
 // Revoke and Public read the token from the {token} path value.
+//
+// Resolve is the app's boundary for what may be made public: Create refuses
+// any target it does not resolve, and Public serves whatever it returns. Only
+// return payloads that are fit to show to anyone holding a link.
 type Handlers struct {
 	Store    *Store
 	Resolve  Resolver

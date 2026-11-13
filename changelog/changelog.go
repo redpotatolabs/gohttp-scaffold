@@ -24,8 +24,9 @@ type Entry struct {
 	Time   time.Time `json:"time"`
 	Actor  Actor     `json:"actor"`
 	Action string    `json:"action"`
-	// Target names what changed, for example "map", "revision:<id>" or
-	// "share:<target>".
+	// Target names what changed, for example "map" or "revision:<id>". The
+	// share store logs the link's raw target; its share.* action is what marks
+	// the entry as being about a link, so apps should not prefix it.
 	Target string `json:"target"`
 }
 

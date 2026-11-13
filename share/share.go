@@ -116,6 +116,11 @@ func (s *Store) Create(target string, by changelog.Actor) (Link, error) {
 }
 
 // Revoke turns a link off. Revoking a link that is already off does nothing.
+//
+// If the change log write fails, the link stays off and Revoke still returns
+// the error, so the caller sees a failure; a retry then succeeds without a
+// second log entry. This is deliberate: a link must never stay public because
+// logging failed.
 func (s *Store) Revoke(token string, by changelog.Actor) error {
 	if by.ID == "" {
 		return errors.New("share: revoker needs an id")
