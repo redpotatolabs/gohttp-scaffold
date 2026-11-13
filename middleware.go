@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/redpotatolabs/beacon/pkg/beacon"
+	beacon "github.com/redpotatolabs/beacon-client"
 )
 
 // ContentSecurityPolicy only allows the site's own scripts, styles, forms and frames.
