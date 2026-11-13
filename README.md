@@ -37,6 +37,23 @@ err := srv.Run(ctx, scaffold.RunConfig{Addr: ":8080", Handler: handler})
 | `EnvOrDefault` | environment variable with a fallback |
 | `Server.Run`, `RunConfig` | `http.Server` with standard timeouts and graceful shutdown on context cancel |
 
+### Subpackages
+
+| Package | Purpose |
+| --- | --- |
+| `changelog` | append-only `changes.jsonl`: who (Discord ID and name) did what to which target, synced on every write |
+| `share` | public read-only links: 128-bit tokens in `shares.json`, create, list and revoke handlers for editors, and a public handler that serves whatever the app's resolver returns for the link's target. Create and revoke go to the change log. |
+
+Mount the share handlers yourself, with the manage routes behind your edit-role check and the public one open:
+
+```go
+h := &share.Handlers{Store: shares, Resolve: resolveRevision, Identify: auth.Actor}
+mux.Handle("POST /api/shares", requireEdit(http.HandlerFunc(h.Create)))
+mux.Handle("GET /api/shares", requireEdit(http.HandlerFunc(h.List)))
+mux.Handle("DELETE /api/shares/{token}", requireEdit(http.HandlerFunc(h.Revoke)))
+mux.HandleFunc("GET /api/s/{token}", h.Public)
+```
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
