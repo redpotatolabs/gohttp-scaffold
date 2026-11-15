@@ -1,2 +1,6 @@
 github.com/redpotatolabs/beacon-client v0.0.0-20261113192306-a6a7d4ea06c5 h1:JqVTXg/+lWHUexxrqYOJV7IgQsukLF9InpN6CMHZwmc=
 github.com/redpotatolabs/beacon-client v0.0.0-20261113192306-a6a7d4ea06c5/go.mod h1:ZAv4d+h157VvbAz6Ms6IKKNh6jrD3GVPb97u+gQdSC0=
+github.com/redpotatolabs/discord-oauth v0.0.0-20261113192323-043d96da0646 h1:dygA6s4SgWjxAE+b1XKJ9MbBrGBgtF1JTiAvXqbi3dU=
+github.com/redpotatolabs/discord-oauth v0.0.0-20261113192323-043d96da0646/go.mod h1:FkaNOop9QjNWk89qjBHk6qcEMTxVHq5VnVRZDDbvLtk=
+golang.org/x/oauth2 v0.36.0 h1:peZ/1z27fi9hUOFCAZaHyrpWG5lwe0RJEEEeH0ThlIs=
+golang.org/x/oauth2 v0.36.0/go.mod h1:YDBUJMTkDnJS+A4BP4eZBjCqtokkg1hODuPjwiGPO7Q=
