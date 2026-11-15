@@ -119,6 +119,16 @@ func newFixture(t *testing.T) *fixture {
 	f.mux.Handle("GET /view", a.RequireRole(View)(ok))
 	f.mux.Handle("GET /edit", a.RequireRole(Edit)(ok))
 	f.mux.Handle("GET /api/data", a.RequireRole(View)(ok))
+	echo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var v struct{ N int }
+		if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		_, _ = w.Write([]byte("saved"))
+	})
+	f.mux.Handle("PUT /api/data", a.RequireRole(Edit)(echo))
+	f.mux.Handle("POST /api/form", a.RequireRole(Edit)(ok))
 	return f
 }
 
@@ -341,12 +351,92 @@ func TestSignInAgainEndsSession(t *testing.T) {
 	f.discord.mu.Lock()
 	f.discord.refreshErr = discordoauth.ErrSignInAgain
 	f.discord.mu.Unlock()
-	if rec := f.do(page("/view", c)); rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 on sign-in-again, got %d", rec.Code)
+	// Treated as signed out at once: a page goes to sign-in and back.
+	rec := f.do(page("/view", c))
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != LoginPath+"?next=%2Fview" {
+		t.Fatalf("page on sign-in-again: %d -> %s", rec.Code, rec.Header().Get("Location"))
 	}
-	// The session is gone: the next page goes to sign-in.
+	// The session is gone, so the next request has nothing to refresh.
 	if rec := f.do(page("/view", c)); rec.Code != http.StatusFound {
 		t.Fatalf("session should be deleted, got %d", rec.Code)
+	}
+
+	// A fetch gets 401, from RequireRole and from /auth/me.
+	f2 := newFixture(t)
+	c2 := f2.signIn()
+	f2.clock = f2.clock.Add(roleCacheTTL + time.Second)
+	f2.discord.mu.Lock()
+	f2.discord.refreshErr = discordoauth.ErrSignInAgain
+	f2.discord.mu.Unlock()
+	if rec := f2.do(fetch("/api/data", c2)); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("fetch on sign-in-again: %d", rec.Code)
+	}
+	f3 := newFixture(t)
+	c3 := f3.signIn()
+	f3.clock = f3.clock.Add(roleCacheTTL + time.Second)
+	f3.discord.mu.Lock()
+	f3.discord.refreshErr = discordoauth.ErrSignInAgain
+	f3.discord.mu.Unlock()
+	if rec := f3.do(fetch(MePath, c3)); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("me on sign-in-again: %d", rec.Code)
+	}
+}
+
+func TestUnsafeMethodsNeedCSRF(t *testing.T) {
+	f := newFixture(t)
+	f.discord.set([]string{editRole}, nil)
+	c := f.signIn()
+	sess := f.auth.SessionOf(page("/", c))
+
+	put := func(token string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("PUT", "/api/data", strings.NewReader(`{"N":1}`))
+		r.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			r.Header.Set("X-CSRF-Token", token)
+		}
+		r.AddCookie(c)
+		return f.do(r)
+	}
+	if rec := put(""); rec.Code != http.StatusForbidden {
+		t.Fatalf("PUT without token: %d %s", rec.Code, rec.Body)
+	}
+	if rec := put("wrong"); rec.Code != http.StatusForbidden {
+		t.Fatalf("PUT with wrong token: %d", rec.Code)
+	}
+	// With the header the JSON body reaches the handler untouched.
+	if rec := put(sess.CSRFToken); rec.Code != 200 || rec.Body.String() != "saved" {
+		t.Fatalf("PUT with token: %d %s", rec.Code, rec.Body)
+	}
+	// A text/plain body, as a cross-site form would send, never reaches the handler.
+	r := httptest.NewRequest("PUT", "/api/data", strings.NewReader(`{"N":1}`))
+	r.Header.Set("Content-Type", "text/plain")
+	r.AddCookie(c)
+	if rec := f.do(r); rec.Code != http.StatusForbidden {
+		t.Fatalf("text/plain PUT: %d", rec.Code)
+	}
+	// A form may carry the token as a field.
+	form := httptest.NewRequest("POST", "/api/form", strings.NewReader("csrf="+url.QueryEscape(sess.CSRFToken)))
+	form.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	form.AddCookie(c)
+	if rec := f.do(form); rec.Code != 200 {
+		t.Fatalf("form POST with field: %d", rec.Code)
+	}
+	// GET never needs it.
+	if rec := f.do(page("/edit", c)); rec.Code != 200 {
+		t.Fatalf("GET with no token: %d", rec.Code)
+	}
+}
+
+func TestRetryKeepsNext(t *testing.T) {
+	f := newFixture(t)
+	login := f.do(httptest.NewRequest("GET", LoginPath+"?next=/maps/9", nil))
+	// The state cookie is lost but the next cookie survived.
+	cb := httptest.NewRequest("GET", CallbackPath+"?state=whatever&code=good", nil)
+	cb.AddCookie(cookie(login, stateCookie+"_next"))
+	rec := f.do(cb)
+	loc, _ := url.Parse(rec.Header().Get("Location"))
+	if rec.Code != http.StatusFound || loc.Path != LoginPath || loc.Query().Get("retry") != "1" || loc.Query().Get("next") != "/maps/9" {
+		t.Fatalf("retry should keep next: %d -> %s", rec.Code, rec.Header().Get("Location"))
 	}
 }
 

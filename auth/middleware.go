@@ -2,12 +2,15 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"html"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
+
+	discordoauth "github.com/redpotatolabs/discord-oauth"
 )
 
 // RequireRole lets a request through when the visitor is signed in and
@@ -15,6 +18,12 @@ import (
 // a redirect to sign-in for a page, or 401 for anything else; a member
 // without the role gets a "not a member" page or 403; a visitor whose roles
 // Discord cannot confirm gets 403 with that message.
+//
+// Every method other than GET, HEAD and OPTIONS must also carry the
+// session's CSRF token, in the X-CSRF-Token header or the "csrf" field of
+// a form body, or it gets 403. The cookie alone is not enough: every
+// potato.red site is one site to the browser, so SameSite does not stop a
+// page on another subdomain from posting with our cookie.
 //
 // A page is a GET or HEAD whose Accept header prefers text/html. Fetches
 // from a page get the status codes, so the page can show the sign-in link
@@ -24,16 +33,20 @@ func (a *Auth) RequireRole(level Level) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sess := a.sessions.fromRequest(r, a.cfg.CookieName, a.now())
 			if sess == nil {
-				if isPage(r) {
-					http.Redirect(w, r, LoginPath+"?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
-					return
-				}
-				http.Error(w, "sign in first", http.StatusUnauthorized)
+				a.signedOut(w, r)
+				return
+			}
+			if !safeMethod(r.Method) && !a.validCSRF(r, sess) {
+				http.Error(w, "missing or wrong CSRF token", http.StatusForbidden)
 				return
 			}
 			roles, err := a.memberRoles(r.Context(), sess)
 			if err != nil {
 				log.Printf("auth: role check user=%s: %v", sess.UserID, err)
+				if errors.Is(err, discordoauth.ErrSignInAgain) {
+					a.signedOut(w, r)
+					return
+				}
 				if refused(err) {
 					a.deny(w, r, "Not a member", "You are not in our Discord server, so you cannot use this site.")
 					return
@@ -52,6 +65,19 @@ func (a *Auth) RequireRole(level Level) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// signedOut sends a page to sign-in and back, and answers a fetch with 401.
+func (a *Auth) signedOut(w http.ResponseWriter, r *http.Request) {
+	if isPage(r) {
+		http.Redirect(w, r, LoginPath+"?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusFound)
+		return
+	}
+	http.Error(w, "sign in first", http.StatusUnauthorized)
+}
+
+func safeMethod(m string) bool {
+	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
 }
 
 // deny answers 403: a short page for a page request, plain text otherwise.

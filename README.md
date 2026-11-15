@@ -56,7 +56,7 @@ mux.Handle("PUT /api/maps/{id}", a.RequireRole(auth.Edit)(saveMap))
 handler := auth.CanonicalHost(srv.Wrap(mux, nil), cfg.PublicHost())
 ```
 
-A page without a session is sent to sign-in and back; a fetch gets 401. A member without the role gets a "not a member" page or 403. An empty `DISCORD_VIEW_ROLE_IDS` lets every member of the server view; an empty `DISCORD_EDIT_ROLE_IDS` lets nobody edit. `GET /auth/me` tells the page who is signed in, whether they may view or edit, and the CSRF token to send as `X-CSRF-Token` on every POST, PUT and DELETE.
+A page without a session is sent to sign-in and back; a fetch gets 401. A member without the role gets a "not a member" page or 403. An empty `DISCORD_VIEW_ROLE_IDS` lets every member of the server view; an empty `DISCORD_EDIT_ROLE_IDS` lets nobody edit. `GET /auth/me` tells the page who is signed in, whether they may view or edit, and the CSRF token. `RequireRole` refuses any method other than GET, HEAD and OPTIONS without it, as the `X-CSRF-Token` header or the `csrf` field of a form body, because every potato.red site is one site to the browser and the cookie alone would let another subdomain post as the visitor.
 
 Mount the share handlers yourself, with the manage routes behind your edit-role check and the public one open:
 

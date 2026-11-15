@@ -343,7 +343,14 @@ func (a *Auth) recoverSignIn(w http.ResponseWriter, r *http.Request, message str
 		return
 	}
 	log.Printf("auth: sign-in callback without a valid state cookie: retrying")
-	http.Redirect(w, r, LoginPath+"?retry=1", http.StatusFound)
+	retry := LoginPath + "?retry=1"
+	// The return page survives: its cookie is separate from the state.
+	if c, err := r.Cookie(stateCookie + "_next"); err == nil {
+		if next := safeNext(c.Value); next != "" {
+			retry += "&next=" + url.QueryEscape(next)
+		}
+	}
+	http.Redirect(w, r, retry, http.StatusFound)
 }
 
 // handleLogout ends the session. The CSRF token comes as the form field
@@ -384,6 +391,10 @@ func (a *Auth) handleMe(w http.ResponseWriter, r *http.Request) {
 	roles, err := a.memberRoles(r.Context(), sess)
 	if err != nil {
 		log.Printf("auth: role check user=%s: %v", sess.UserID, err)
+		if errors.Is(err, discordoauth.ErrSignInAgain) {
+			http.Error(w, "sign in first", http.StatusUnauthorized)
+			return
+		}
 		http.Error(w, "could not confirm your roles", http.StatusForbidden)
 		return
 	}
@@ -408,18 +419,24 @@ func (a *Auth) sessionCookie(id string, expires time.Time) *http.Cookie {
 	return c
 }
 
-// validCSRF says whether r carries sess's token, in the "csrf" form field
-// or the X-CSRF-Token header.
+// validCSRF says whether r carries sess's token, in the X-CSRF-Token header
+// or, for a form body, the "csrf" field. A JSON or other body must use the
+// header; it is left unread for the handler.
 func (a *Auth) validCSRF(r *http.Request, sess *Session) bool {
 	got := r.Header.Get("X-CSRF-Token")
-	if got == "" {
+	if got == "" && isFormBody(r) {
 		r.Body = http.MaxBytesReader(nil, r.Body, 64<<10)
 		if err := r.ParseForm(); err != nil {
 			return false
 		}
 		got = r.PostForm.Get("csrf")
 	}
-	return subtle.ConstantTimeCompare([]byte(got), []byte(sess.CSRFToken)) == 1
+	return got != "" && subtle.ConstantTimeCompare([]byte(got), []byte(sess.CSRFToken)) == 1
+}
+
+func isFormBody(r *http.Request) bool {
+	ct := r.Header.Get("Content-Type")
+	return strings.HasPrefix(ct, "application/x-www-form-urlencoded") || strings.HasPrefix(ct, "multipart/form-data")
 }
 
 func randomID() (string, error) {
