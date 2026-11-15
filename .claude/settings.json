@@ -1,0 +1,15 @@
+{
+  "model": "claude-fable-5-1",
+  "effortLevel": "medium",
+  "extraKnownMarketplaces": {
+    "redpotatolabs": {
+      "source": {
+        "source": "github",
+        "repo": "redpotatolabs/claude-plugins"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "flow@redpotatolabs": true
+  }
+}
