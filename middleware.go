@@ -12,11 +12,39 @@ import (
 	beacon "github.com/redpotatolabs/beacon-client"
 )
 
-// ContentSecurityPolicy only allows the site's own scripts, styles, forms and frames.
-// form-action also covers where a submitted form redirects to, so a form that
-// redirects off-site needs its own policy.
-const ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-	"object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+// Cloudflare adds its Web Analytics beacon to every potato.red page it serves,
+// so the policy lets the beacon load and report (RED-168, as admin did in
+// RED-164). There is no snippet in the pages. The beacon usually reports to the
+// site's own /cdn-cgi/rum, which 'self' covers; cloudflareinsights.com is for
+// when it reports there instead.
+const (
+	AnalyticsScript = "https://static.cloudflareinsights.com"
+	AnalyticsReport = "https://cloudflareinsights.com"
+)
+
+// ContentSecurityPolicy only allows the site's own scripts, styles, forms and
+// frames, plus Cloudflare's analytics beacon. form-action also covers where a
+// submitted form redirects to, so a form that redirects off-site needs its own
+// policy. An app that must connect elsewhere too (a Sentry ingest host) uses
+// ContentSecurityPolicyWith rather than appending a second connect-src, which
+// the browser would ignore.
+const ContentSecurityPolicy = "default-src 'self'; script-src 'self' " + AnalyticsScript + "; style-src 'self' 'unsafe-inline'; " +
+	"object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; " +
+	"connect-src 'self' " + AnalyticsReport
+
+// ContentSecurityPolicyWith is ContentSecurityPolicy with extra origins the
+// browser may connect to, such as https://o1.ingest.us.sentry.io. They join the
+// one connect-src: a browser keeps only the first of two directives with the
+// same name. Empty origins are skipped.
+func ContentSecurityPolicyWith(connect ...string) string {
+	policy := ContentSecurityPolicy
+	for _, origin := range connect {
+		if origin = strings.TrimSpace(origin); origin != "" {
+			policy += " " + origin
+		}
+	}
+	return policy
+}
 
 // SecurityHeaders sets the standard redpotatolabs response headers.
 func SecurityHeaders(next http.Handler) http.Handler {

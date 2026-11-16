@@ -29,7 +29,7 @@ err := srv.Run(ctx, scaffold.RunConfig{Addr: ":8080", Handler: handler})
 | --- | --- |
 | `Server`, `New`, `Server.SetBeacon`, `Server.Report` | holds the optional beacon client and reports errors through it |
 | `Server.Wrap(h, *WrapOptions)` | applies the default middleware stack in a fixed order |
-| `SecurityHeaders`, `ContentSecurityPolicy` | standard response headers |
+| `SecurityHeaders`, `ContentSecurityPolicy`, `ContentSecurityPolicyWith` | standard response headers. The policy lets Cloudflare's Web Analytics beacon load (`AnalyticsScript`) and report (`AnalyticsReport`); `ContentSecurityPolicyWith(origins...)` adds connect-src origins such as a Sentry ingest host, in the one connect-src directive |
 | `RateLimiter(rps, burst)` | per-client token bucket, keyed by the real client IP behind Cloudflare or a proxy |
 | `RecoverPanics` | turns handler panics into 500 responses and reports them |
 | `ReadJSON`, `WriteJSON`, `DefaultMaxJSONBytes` | size-limited JSON decoding and encoding |

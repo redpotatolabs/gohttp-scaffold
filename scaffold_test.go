@@ -35,7 +35,7 @@ func TestSecurityHeaders(t *testing.T) {
 		"X-Content-Type-Options":  "nosniff",
 		"X-Frame-Options":         "DENY",
 		"Referrer-Policy":         "strict-origin-when-cross-origin",
-		"Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+		"Content-Security-Policy": "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; connect-src 'self' https://cloudflareinsights.com",
 	}
 	for k, v := range wantHeaders {
 		if got := w.Header().Get(k); got != v {
@@ -324,5 +324,35 @@ func TestRun_RejectsNilHandler(t *testing.T) {
 	err := s.Run(context.Background(), RunConfig{})
 	if err == nil {
 		t.Fatal("expected error for nil handler")
+	}
+}
+
+func TestPolicyLetsCloudflareAnalyticsThrough(t *testing.T) {
+	// The beacon script loads from static.cloudflareinsights.com and may report
+	// to cloudflareinsights.com; each directive appears once.
+	for _, directive := range []string{"script-src", "connect-src"} {
+		if n := strings.Count(ContentSecurityPolicy, directive); n != 1 {
+			t.Errorf("%s appears %d times; a browser ignores every one after the first", directive, n)
+		}
+	}
+	if !strings.Contains(ContentSecurityPolicy, "script-src 'self' https://static.cloudflareinsights.com;") {
+		t.Errorf("script-src does not allow the beacon: %q", ContentSecurityPolicy)
+	}
+	if !strings.HasSuffix(ContentSecurityPolicy, "connect-src 'self' https://cloudflareinsights.com") {
+		t.Errorf("connect-src does not allow the beacon's report: %q", ContentSecurityPolicy)
+	}
+}
+
+func TestContentSecurityPolicyWith(t *testing.T) {
+	got := ContentSecurityPolicyWith("https://o1.ingest.us.sentry.io", "", "  ")
+	want := ContentSecurityPolicy + " https://o1.ingest.us.sentry.io"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if n := strings.Count(got, "connect-src"); n != 1 {
+		t.Errorf("connect-src appears %d times", n)
+	}
+	if ContentSecurityPolicyWith() != ContentSecurityPolicy {
+		t.Error("no extra origins should give the plain policy")
 	}
 }
